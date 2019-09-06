@@ -30,6 +30,7 @@ export default class ModuleCollection {
       assertRawModule(path, rawModule)
     }
 
+    // 生成 root module 或者 sub module
     const newModule = new Module(rawModule, runtime)
     if (path.length === 0) {
       this.root = newModule
@@ -39,6 +40,7 @@ export default class ModuleCollection {
     }
 
     // register nested modules
+    // 递归生成child modules
     if (rawModule.modules) {
       forEachValue(rawModule.modules, (rawChildModule, key) => {
         this.register(path.concat(key), rawChildModule, runtime)
@@ -95,6 +97,7 @@ const objectAssert = {
   expected: 'function or object with "handler" function'
 }
 
+// 开发坏境下校验值类型
 const assertTypes = {
   getters: functionAssert,
   mutations: functionAssert,
