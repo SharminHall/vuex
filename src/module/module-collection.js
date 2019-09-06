@@ -39,9 +39,9 @@ export default class ModuleCollection {
       parent.addChild(path[path.length - 1], newModule)
     }
 
-    // register nested modules
     // 递归生成child modules
     if (rawModule.modules) {
+      // key 为module名称
       forEachValue(rawModule.modules, (rawChildModule, key) => {
         this.register(path.concat(key), rawChildModule, runtime)
       })
