@@ -26,14 +26,14 @@ export class Store {
     } = options
 
     // store internal state
-    this._committing = false
+    this._committing = false // 结合_withCommit，限制state改变的途径
     this._actions = Object.create(null)
-    this._actionSubscribers = []
+    this._actionSubscribers = [] // action 订阅者 { before: state => {}, after: state => {} }
     this._mutations = Object.create(null)
     this._wrappedGetters = Object.create(null)
     this._modules = new ModuleCollection(options)
-    this._modulesNamespaceMap = Object.create(null)
-    this._subscribers = []
+    this._modulesNamespaceMap = Object.create(null) // 命名空间映射的节点值
+    this._subscribers = [] // commit 订阅者
     this._watcherVM = new Vue()
 
     // bind commit and dispatch to self
@@ -63,6 +63,7 @@ export class Store {
     // apply plugins
     plugins.forEach(plugin => plugin(this))
 
+    // 是否使用vue-devtools调试工具，Vue.config.devtools默认在开发环境为true
     const useDevtools = options.devtools !== undefined ? options.devtools : Vue.config.devtools
     if (useDevtools) {
       devtoolPlugin(this)
@@ -100,6 +101,8 @@ export class Store {
         handler(payload)
       })
     })
+
+    // 触发订阅者
     this._subscribers.forEach(sub => sub(mutation, this.state))
 
     if (
@@ -129,6 +132,7 @@ export class Store {
       return
     }
 
+    // 触发订阅者，执行before方法
     try {
       this._actionSubscribers
         .filter(sub => sub.before)
@@ -140,11 +144,13 @@ export class Store {
       }
     }
 
+    // 多个action发生异步？
     const result = entry.length > 1
       ? Promise.all(entry.map(handler => handler(payload)))
       : entry[0](payload)
 
     return result.then(res => {
+      // 执行订阅者after方法
       try {
         this._actionSubscribers
           .filter(sub => sub.after)
@@ -279,10 +285,12 @@ function resetStoreVM (store, state, hot) {
   Vue.config.silent = silent
 
   // enable strict mode for new vm
+  // 严格模式下，监听_vm._data.$$state改变，如果非commit引起，将抛出错误
   if (store.strict) {
     enableStrictMode(store)
   }
 
+  // 销毁释放上一个_vm
   if (oldVm) {
     if (hot) {
       // dispatch changes in all subscribed watchers
@@ -295,19 +303,32 @@ function resetStoreVM (store, state, hot) {
   }
 }
 
+/*
+ * @param store 上下文
+ * @param rootState 根节点state
+ * @param path {Array} 由moduleName组成的链式路径数组
+ * @param module 当前你层级
+ * @param hot 是否热更新
+ */
 function installModule (store, rootState, path, module, hot) {
+  // path为空表示是根节点
   const isRoot = !path.length
+
+  // 获取当前节点命名空间 getNamespace是Module的一个方法
   const namespace = store._modules.getNamespace(path)
 
   // register in namespace map
   if (module.namespaced) {
+    // 判重
     if (store._modulesNamespaceMap[namespace] && process.env.NODE_ENV !== 'production') {
       console.error(`[vuex] duplicate namespace ${namespace} for the namespaced module ${path.join('/')}`)
     }
+
+    // _modulesNamespaceMap 根据命名空间值控制存储当前节点值
     store._modulesNamespaceMap[namespace] = module
   }
 
-  // set state
+  // 设置非根节点的state，调用形式rootState.moduleName[key]的由来
   if (!isRoot && !hot) {
     const parentState = getNestedState(rootState, path.slice(0, -1))
     const moduleName = path[path.length - 1]
@@ -316,24 +337,36 @@ function installModule (store, rootState, path, module, hot) {
     })
   }
 
+  // 声明当前节点上下文，保证本身的mutations actions 以及getter在使用时，传入局部state对象
   const local = module.context = makeLocalContext(store, namespace, path)
 
+  // 注册当前节点的mutations至store._mutations
   module.forEachMutation((mutation, key) => {
     const namespacedType = namespace + key
+
+    // mutation = (payload) => (state, payload) => {}
     registerMutation(store, namespacedType, mutation, local)
   })
 
+  // 注册当前节点的actions至store._actions
   module.forEachAction((action, key) => {
+    // action: Object | function
     const type = action.root ? key : namespace + key
     const handler = action.handler || action
+
+    // action = (payload, cb) => ({ dispatch, commit, getters, state, rootGetters. rootState }, payload, cb) => {}
     registerAction(store, type, handler, local)
   })
 
+  // 注册当前节点的getter至store._wrappedGetters
   module.forEachGetter((getter, key) => {
     const namespacedType = namespace + key
+
+    // getter = (store) => (localState, localGetters, rootState, rootGetters) => {}
     registerGetter(store, namespacedType, getter, local)
   })
 
+  // 递归install
   module.forEachChild((child, key) => {
     installModule(store, rootState, path.concat(key), child, hot)
   })

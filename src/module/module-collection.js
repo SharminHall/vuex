@@ -13,6 +13,7 @@ export default class ModuleCollection {
     }, this.root)
   }
 
+  // 更具path获取从root往下的命名空间值
   getNamespace (path) {
     let module = this.root
     return path.reduce((namespace, key) => {
@@ -27,6 +28,7 @@ export default class ModuleCollection {
 
   register (path, rawModule, runtime = true) {
     if (process.env.NODE_ENV !== 'production') {
+      // 断言方法，校验原始数据的格式
       assertRawModule(path, rawModule)
     }
 
